@@ -1,0 +1,15 @@
+{
+  "name": "Story Tree Manager",
+  "display_name": "故事树管理器",
+  "author": "You & AI",
+  "version": "15.2.0",
+  "description": "一个用于创建和管理非线性故事决策树的插件。",
+  "tags": ["planning", "writing", "tree"],
+  "js": "script.js",
+  "css": "style.css",
+  "persistent": false,
+  "min_st_version_major": 1,
+  "min_st_version_minor": 12,
+  "requires": [],
+  "optional": []
+}

@@ -1,0 +1,95 @@
+<!-- This is now a self-contained panel, not just a drawer content -->
+<div id="task_manager_panel" class="task-manager-panel hidden">
+
+  <!-- Panel Header -->
+  <div class="panel-header">
+    <h3><i class="fa-solid fa-list-check"></i> 任务分解管理器</h3>
+    <div class="panel-close-button" title="关闭 (Esc)">
+        <i class="fa-solid fa-xmark"></i>
+    </div>
+  </div>
+
+  <!-- Panel Content -->
+  <div class="panel-content">
+    <!-- Section 1: AI Task Generation -->
+    <div class="manager-section">
+      <h4 class="section-title">1. 生成任务列表</h4>
+      <div class="tm_block">
+        <label for="main_objective">你的主要目标：</label>
+        <textarea id="main_objective" class="text_pole" rows="3" placeholder="输入你的核心任务或故事目标。"></textarea>
+      </div>
+      <div class="tm_block">
+        <label for="perspective_select">视角选择：</label>
+        <select id="perspective_select" class="text_pole">
+            <option value="从{{user}}的第一人称视角出发（使用“我”）。">👤 {{user}} (第一人称)</option>
+            <option value="从{{user}}的第二人称视角出发（使用“你”）。">👤 {{user}} (第二人称)</option>
+            <option value="从{{user}}的第三人称视角出发（使用“他/她”）。">👤 {{user}} (第三人称)</option>
+            <option value="从{{char}}的第一人称视角出发（使用“我”）。">🤖 {{char}} (第一人称)</option>
+            <option value="从{{char}}的第二人称视角出发（使用“你”）。">🤖 {{char}} (第二人称)</option>
+            <option value="从{{char}}的第三人称视角出发（使用“他/她”）。">🤖 {{char}} (第三人称)</option>
+            <option value="custom">⚙️ 自定义...</option>
+        </select>
+        <textarea id="custom_perspective_prompt" class="text_pole" rows="3" placeholder="输入你的自定义视角指令..." style="display: none; margin-top: 8px;"></textarea>
+      </div>
+      <div class="tm_block">
+        <label for="breakdown_prompt">AI处理指令：</label>
+        <textarea id="breakdown_prompt" class="text_pole" rows="4" placeholder="告诉AI如何分解上述目标。"></textarea>
+      </div>
+      <div class="tm_block">
+        <button id="generate_tasks_button" class="menu_button">AI生成任务</button>
+      </div>
+    </div>
+
+<!-- ... (header and section 1 are the same) ... -->
+    <!-- Section 2: Task List -->
+    <div class="manager-section">
+      <div class="section-header">
+        <h4 class="section-title">2. 故事树</h4>
+        <div class="task-actions-group">
+            <button id="add_task_button" class="menu_button" title="添加故事节点"><i class="fa-solid fa-plus"></i></button>
+            <button id="add_choice_button" class="menu_button" title="添加选择节点"><i class="fa-solid fa-diamond"></i></button>
+            <button id="import_tasks_button" class="menu_button" title="导入"><i class="fa-solid fa-file-import"></i></button>
+            <button id="export_tasks_button" class="menu_button" title="导出"><i class="fa-solid fa-file-export"></i></button>
+        </div>
+      </div>
+      <div id="task_list_container">
+        <!-- Tree will be dynamically inserted here -->
+      </div>
+    </div>
+<!-- ... (section 3 is the same) ... -->
+    
+    <!-- Section 3: Active Task Info (UPDATED) -->
+     <div class="manager-section">
+      <h4 class="section-title">3. 当前任务注入</h4>
+      <div id="active_task_info" class="tm_block">
+          <small>当前没有激活的任务。</small>
+      </div>
+      <div class="tm_block" style="margin-top: 10px;">
+          <label for="injection_position_select">插入位置：</label>
+          <select id="injection_position_select" class="text_pole">
+              <option value="before_char">角色卡之前 (Before Character)</option>
+              <option value="after_char">角色卡之后 (After Character)</option>
+              <option value="before_chat">聊天记录之前 (Before Chat History)</option>
+              <option value="after_chat">聊天记录之后 (After Chat History)</option>
+          </select>
+      </div>
+      <!-- NEW: Auto-completion feature UI -->
+      <div class="tm_block" style="margin-top: 10px;">
+          <label for="auto_complete_toggle">
+            <input type="checkbox" id="auto_complete_toggle">
+            自动检测任务完成
+          </label>
+          <small>启用后，将根据最新对话自动判断当前任务是否完成。这会消耗少量额外资源。</small>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+
+
+
+
+
+
