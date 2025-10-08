@@ -16,7 +16,7 @@
 1.  在 SillyTavern 中，进入 **扩展** -> **下载扩展和资源**。
 2.  将以下 URL 粘贴到 "Install Extension" 的输入框中：
     ```
-   https://github.com/lizard682/task_breakdown_manager.git
+    https://github.com/lizard682/task_breakdown_manager.git
     ```
 3.  点击 **Install**。
 
