@@ -44,7 +44,12 @@ function checkForRollback() {
         }
         if (task.type === 'choice' && task.activeBranch) {
             const activeBranch = task.children.find(child => child.id === task.activeBranch);
-            if (!activeBranch || !activeBranch.completed) { task.activeBranch = null; rolledBack = true; }
+            // If the active branch itself has been rolled back, un-set the choice
+            if (!activeBranch || !activeBranch.completed) { 
+                task.activeBranch = null; 
+                task.completed = false; // The choice itself is no longer considered "completed"
+                rolledBack = true; 
+            }
         }
     }
     if (rolledBack) { toastr.info('检测到聊天记录变更，已自动回退相关节点状态。'); saveState(); renderTaskList(); }
@@ -89,45 +94,94 @@ function toggleCustomPerspectiveInput() { if ($('#perspective_select').val() ===
 
 // --- UI LOGIC ---
 function getActivePath() {
-    let path = []; let currentLevelTasks = tasks;
-    while (true) {
-        let nextLevelTasks = null; let foundNodeOnLevel = false;
-        for (const node of currentLevelTasks) {
-            if (node.type === 'choice') {
-                if (node.activeBranch) { const chosenBranch = node.children.find(c => c.id === node.activeBranch); if (chosenBranch) { path.push(node); path.push(chosenBranch); nextLevelTasks = chosenBranch.children || []; foundNodeOnLevel = true; break; } }
-                else { path.push(node); return path; }
-            } else if (!node.completed) { path.push(node); return path; }
+    const path = [];
+    const visited = new Set();
+
+    function findNextActiveNode(nodeList) {
+        for (const node of nodeList) {
+            if (visited.has(node.id)) {
+                console.warn('[故事树] 检测到循环路径，已中断。', path);
+                return { found: true, terminal: true }; // Prevent infinite loops
+            }
+
+            if (!node.completed) {
+                path.push(node);
+                return { found: true, terminal: false }; // Found an active, uncompleted node
+            }
+            
+            visited.add(node.id);
+            path.push(node);
+
+            let result = { found: false, terminal: false };
+
+            if (node.jumpToId) {
+                const targetNode = findTaskById(tasks, node.jumpToId);
+                if (targetNode) result = findNextActiveNode([targetNode]);
+            } else if (node.type === 'choice') {
+                if (node.activeBranch) {
+                    const chosenBranch = node.children.find(c => c.id === node.activeBranch);
+                    if (chosenBranch) result = findNextActiveNode([chosenBranch]);
+                }
+            } else if (node.children && node.children.length > 0) {
+                result = findNextActiveNode(node.children);
+            }
+
+            if (result.found) return result;
+            
+            path.pop();
+            visited.delete(node.id);
         }
-        if (foundNodeOnLevel) { currentLevelTasks = nextLevelTasks; } else { break; }
+        return { found: false, terminal: true };
     }
+
+    const finalResult = findNextActiveNode(tasks);
+    
+    if (!finalResult.found && finalResult.terminal) {
+        return [];
+    }
+
     return path;
 }
 
 function refreshActiveTaskUI() {
-    const activePath = getActivePath(); $('.task-item').removeClass('active');
+    const activePath = getActivePath();
+    $('.task-item').removeClass('active');
+
     if (activePath.length > 0) {
         const activeNode = activePath[activePath.length - 1];
         $(`[data-task-id="${activeNode.id}"]`).addClass('active');
-        if (activeNode.type === 'choice') { $('#active_task_info').html(`<strong>当前抉择:</strong> ${activeNode.description}`); }
-        else { const perspectiveText = activeNode.perspective ? `<br><small><b>视角:</b> ${activeNode.perspective}</small>` : ''; $('#active_task_info').html(`<strong>当前任务:</strong> ${activeNode.description}${perspectiveText}`); }
-    } else { $('#active_task_info').html('<small>所有故事线已完成！</small>'); }
+
+        if (activeNode.completed && !activeNode.jumpToId && !(activeNode.children && activeNode.children.length > 0)) {
+             $('#active_task_info').html('<small>所有故事线已完成！</small>');
+        } else if (activeNode.type === 'choice' && !activeNode.completed) {
+            $('#active_task_info').html(`<strong>当前抉择:</strong> ${activeNode.description}`);
+        } else if (activeNode.type === 'task' && !activeNode.completed){
+            const perspectiveText = activeNode.perspective ? `<br><small><b>视角:</b> ${activeNode.perspective}</small>` : '';
+            $('#active_task_info').html(`<strong>当前任务:</strong> ${activeNode.description}${perspectiveText}`);
+        }
+    } else {
+        $('#active_task_info').html('<small>所有故事线已完成！</small>');
+    }
 }
 
-function renderTaskNode(task, parentList) {
+
+function renderTaskNode(task) {
     const hasChildren = task.children && task.children.length > 0;
     const parentChoice = findParent(tasks, task.id);
     const isDisabled = parentChoice && parentChoice.type === 'choice' && parentChoice.activeBranch && parentChoice.activeBranch !== task.id;
 
     let iconHtml, controlsHtml;
+    const jumpTargetHtml = task.jumpToId ? `<div class="jump-indicator" title="完成后跳转到 ${task.jumpToId}"><i class="fa-solid fa-share-from-square"></i> ${task.jumpToId.toString().slice(-4)}</div>` : '';
+
     if (task.type === 'choice') {
         iconHtml = '<i class="fa-solid fa-diamond"></i>';
         controlsHtml = '<i class="fa-solid fa-plus add-branch-button task-action-button" title="添加分支"></i>';
     } else {
         iconHtml = `<input type="checkbox" class="task-checkbox" ${task.completed ? 'checked' : ''}>`;
-        // UPDATED: Add controls for task nodes
         controlsHtml = `
-            <i class="fa-solid fa-plus add-successor-button task-action-button" title="添加后续故事"></i>
-            <i class="fa-solid fa-diamond add-choice-after-button task-action-button" title="添加后续选择"></i>
+            <i class="fa-solid fa-share-from-square set-jump-button task-action-button" title="设置完成后跳转"></i>
+            <i class="fa-solid fa-plus add-child-task-button task-action-button" title="添加子任务"></i>
+            <i class="fa-solid fa-diamond add-child-choice-button task-action-button" title="添加子选择"></i>
         `;
     }
     const nodeHtml = $(`
@@ -136,9 +190,11 @@ function renderTaskNode(task, parentList) {
                 <div class="task-item-main">
                     <span class="task-node-icon">${iconHtml}</span>
                     <textarea class="task-description text_pole" rows="1" placeholder="${task.type === 'choice' ? '抉择点描述...' : '故事节点描述...'}">${task.description}</textarea>
+                    ${jumpTargetHtml}
                 </div>
                 <div class="task-item-controls">
                     ${controlsHtml}
+                    <i class="fa-solid fa-copy copy-id-button task-action-button" title="复制节点ID"></i>
                     <i class="fa-solid fa-trash-can delete-task-button task-action-button" title="删除节点"></i>
                 </div>
             </div>
@@ -147,54 +203,63 @@ function renderTaskNode(task, parentList) {
     `);
     if (task.type === 'task') {
         nodeHtml.find('.task-checkbox').on('change', function() {
-            task.completed = this.checked; if (this.checked && parentChoice && parentChoice.type === 'choice' && !parentChoice.activeBranch) { parentChoice.activeBranch = task.id; }
+            task.completed = this.checked; if (this.checked && parentChoice && parentChoice.type === 'choice' && !parentChoice.activeBranch) { parentChoice.activeBranch = task.id; parentChoice.completed = true; }
             saveState(); renderTaskList();
         });
-        // UPDATED: Wire up new buttons
-        nodeHtml.find('.add-successor-button').on('click', () => addNodeAfter(task.id, 'task'));
-        nodeHtml.find('.add-choice-after-button').on('click', () => addNodeAfter(task.id, 'choice'));
+        nodeHtml.find('.add-child-task-button').on('click', () => addChildNode(task.id, 'task'));
+        nodeHtml.find('.add-child-choice-button').on('click', () => addChildNode(task.id, 'choice'));
+        
+        nodeHtml.find('.set-jump-button').on('click', () => {
+            const targetId = prompt('输入目标节点的ID (留空则清除跳转):', task.jumpToId || '');
+            if (targetId === null) return;
+            const targetNode = findTaskById(tasks, Number(targetId));
+            if (targetId.trim() !== '' && !targetNode) { toastr.error('找不到该ID对应的节点。'); return; }
+            task.jumpToId = targetId.trim() === '' ? null : Number(targetId);
+            saveState(); renderTaskList();
+        });
     } else {
-        nodeHtml.find('.add-branch-button').on('click', () => addNewNode('新分支', task.id, 'task'));
+        nodeHtml.find('.add-branch-button').on('click', () => addChildNode(task.id, 'task'));
     }
     nodeHtml.find('.delete-task-button').on('click', () => { deleteTask(task.id); });
+    nodeHtml.find('.copy-id-button').on('click', () => { navigator.clipboard.writeText(task.id); toastr.success(`节点ID "${task.id}" 已复制到剪贴板。`); });
     const textarea = nodeHtml.find('.task-description');
     textarea.on('input', function() { this.style.height = 'auto'; this.style.height = (this.scrollHeight) + 'px'; }).on('blur', function() {
         const newDescription = $(this).val(); if (task.description !== newDescription) { task.description = newDescription; saveState(); refreshActiveTaskUI(); }
     });
     setTimeout(() => textarea.trigger('input'), 0);
-    if (hasChildren) { const childrenContainer = nodeHtml.find('.task-children-container'); task.children.forEach(childNode => { childrenContainer.append(renderTaskNode(childNode, task.children)); }); }
+    if (hasChildren) { const childrenContainer = nodeHtml.find('.task-children-container'); task.children.forEach(childNode => { childrenContainer.append(renderTaskNode(childNode)); }); }
     return nodeHtml;
 }
+
 
 function renderTaskList() {
     const container = $('#task_list_container');
     container.empty();
     if (tasks.length === 0) { container.html('<p style="padding-left: 5px;"><i>点击上方按钮开始你的故事...</i></p>'); }
-    else { tasks.forEach(task => container.append(renderTaskNode(task, tasks))); }
+    else { tasks.forEach(task => container.append(renderTaskNode(task))); }
     refreshActiveTaskUI();
 }
 
 // --- TASK LOGIC (REFINED) ---
 function createNewNode(description, type) {
-    const newNode = { id: Date.now() + Math.random(), type, description, completed: false, children: [], perspective: $('#perspective_select').val() };
+    const newNode = { id: Date.now() + Math.random(), type, description, completed: false, children: [], perspective: $('#perspective_select').val(), jumpToId: null };
     if (type === 'choice') newNode.activeBranch = null;
     return newNode;
 }
 
-function addNewNode(description, parentId = null, type = 'task') {
+function addNewNode(description, type = 'task') {
     const newNode = createNewNode(description, type);
-    if (parentId) { const parentNode = findTaskById(tasks, parentId); if (parentNode) { if (!parentNode.children) parentNode.children = []; parentNode.children.push(newNode); } }
-    else { tasks.push(newNode); }
+    tasks.push(newNode);
     saveState(); renderTaskList();
 }
 
-function addNodeAfter(siblingId, type) {
+function addChildNode(parentId, type) {
+    const parentNode = findTaskById(tasks, parentId);
+    if (!parentNode) { toastr.error('无法找到父节点！'); return; }
     const description = type === 'task' ? '新故事节点' : '新选择节点';
     const newNode = createNewNode(description, type);
-    const parent = findParent(tasks, siblingId);
-    const list = parent ? parent.children : tasks;
-    const index = list.findIndex(item => item.id === siblingId);
-    if (index !== -1) { list.splice(index + 1, 0, newNode); }
+    if (!parentNode.children) parentNode.children = [];
+    parentNode.children.push(newNode);
     saveState(); renderTaskList();
 }
 
@@ -241,32 +306,79 @@ async function handleGenerateTasksClick() {
 
 // --- AUTO-COMPLETION & INJECTION ---
 function onChatCompletionPromptReady(eventData) {
-    const activeNode = getActivePath().pop();
-    if (activeNode && activeNode.type === 'task' && !activeNode.completed) {
-        const promptText = `[当前任务: ${activeNode.description}]`;
+    const activePath = getActivePath();
+    if (activePath.length === 0) return;
+    const activeNode = activePath[activePath.length-1];
+    if (activeNode && !activeNode.completed) {
+        let promptText;
+        if (activeNode.type === 'task') {
+            promptText = `[当前任务: ${activeNode.description}]`;
+        } else {
+            promptText = `[当前抉择: ${activeNode.description}]`;
+        }
         eventData.chat.splice(eventData.chat.findIndex(m => m.role !== 'system'), 0, { role: 'system', content: promptText });
     }
 }
+
+// BUG-FIX: Major rewrite to handle choice nodes
 async function handleAutoCompletionCheck() {
-    if (!$('#auto_complete_toggle').is(':checked')) return;
-    const activeNode = getActivePath().pop();
-    if (activeNode && activeNode.type === 'task' && !activeNode.completed && chat.length >= 2) {
-        const prompt = `# 对话上下文:\nUser: ${chat[chat.length - 2].mes}\nAI: ${chat[chat.length - 1].mes}\n\n# 判断任务是否完成:\n${activeNode.description}\n\n# 回答:\n仅回答 "yes" 或 "no"`;
-        const result = await generateQuietPrompt(prompt, true, true);
-        if (result.trim().toLowerCase().includes('yes')) {
-            activeNode.completed = true; activeNode.completedByMessageIndex = chat.length - 1;
-            const parentChoice = findParent(tasks, activeNode.id);
-            if (parentChoice && parentChoice.type === 'choice' && !parentChoice.activeBranch) { parentChoice.activeBranch = activeNode.id; }
-            toastr.success(`任务自动完成: "${activeNode.description}"`); saveState(); renderTaskList();
+    if (!$('#auto_complete_toggle').is(':checked') || chat.length < 2) return;
+    
+    const activePath = getActivePath();
+    if (activePath.length === 0) return;
+    const activeNode = activePath[activePath.length-1];
+    if (!activeNode || activeNode.completed) return;
+
+    const lastUserMsg = chat[chat.length - 2].mes;
+    const lastAiMsg = chat[chat.length - 1].mes;
+
+    try {
+        if (activeNode.type === 'task') {
+            const prompt = `# 对话上下文:\nUser: ${lastUserMsg}\nAI: ${lastAiMsg}\n\n# 判断任务是否完成:\n${activeNode.description}\n\n# 回答:\n仅回答 "yes" 或 "no"`;
+            const result = await generateQuietPrompt(prompt, true, true);
+            if (result.trim().toLowerCase().includes('yes')) {
+                activeNode.completed = true;
+                activeNode.completedByMessageIndex = chat.length - 1;
+                const parentChoice = findParent(tasks, activeNode.id);
+                if (parentChoice && parentChoice.type === 'choice' && !parentChoice.activeBranch) {
+                    parentChoice.activeBranch = activeNode.id;
+                    parentChoice.completed = true;
+                }
+                toastr.success(`任务自动完成: "${activeNode.description}"`);
+                saveState();
+                renderTaskList();
+            }
+        } else if (activeNode.type === 'choice' && activeNode.children && activeNode.children.length > 0) {
+            const branchesText = activeNode.children.map((child, index) => `${index + 1}. ${child.description}`).join('\n');
+            const prompt = `# 对话上下文:\nUser: ${lastUserMsg}\nAI: ${lastAiMsg}\n\n# 当前抉择:\n${activeNode.description}\n\n# 可用分支:\n${branchesText}\n\n# 指令:\n根据对话上下文，AI的回复完成了哪个分支？请只回答分支对应的数字。如果没有完成任何分支，请回答 "0"。`;
+            const result = await generateQuietPrompt(prompt, true, true);
+            const choiceIndex = parseInt(result.trim(), 10) - 1;
+
+            if (!isNaN(choiceIndex) && choiceIndex >= 0 && choiceIndex < activeNode.children.length) {
+                const completedBranch = activeNode.children[choiceIndex];
+                completedBranch.completed = true;
+                completedBranch.completedByMessageIndex = chat.length - 1;
+                
+                activeNode.completed = true; // Mark the choice itself as resolved
+                activeNode.activeBranch = completedBranch.id;
+
+                toastr.success(`分支选择: "${completedBranch.description}"`);
+                saveState();
+                renderTaskList();
+            }
         }
+    } catch (error) {
+        console.error('[故事树] 自动完成检查失败:', error);
+        toastr.warning('自动完成检查时出错。');
     }
 }
+
 
 // --- IMPORT/EXPORT ---
 function handleExportTasks() {
     const cleanTasks = tasks.map(function cleaner(task) {
-        const cleanTask = { id: task.id, type: task.type, description: task.description, completed: task.completed, perspective: task.perspective, activeBranch: task.activeBranch };
-        if (task.children && task.children.length > 0) { cleanTask.children = task.children.map(cleaner); } return cleanTask;
+        const cleanTask = { id: task.id, type: task.type, description: task.description, completed: task.completed, perspective: task.perspective, activeBranch: task.activeBranch, jumpToId: task.jumpToId };
+if (task.children && task.children.length > 0) { cleanTask.children = task.children.map(cleaner); } return cleanTask;
     });
     const dataToExport = { mainObjective: $('#main_objective').val(), tasks: cleanTasks };
     const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
@@ -286,7 +398,7 @@ function handleImportTasks() {
                 const data = JSON.parse(e.target.result);
                 if (data && Array.isArray(data.tasks)) {
                     const importedTasks = data.tasks.map(function hydrator(t) {
-                        const node = { id: t.id || Date.now() + Math.random(), type: t.type || 'task', description: t.description, completed: t.completed || false, perspective: t.perspective || '', children: [], activeBranch: t.activeBranch || null };
+                        const node = { id: t.id || Date.now() + Math.random(), type: t.type || 'task', description: t.description, completed: t.completed || false, perspective: t.perspective || '', children: [], activeBranch: t.activeBranch || null, jumpToId: t.jumpToId || null };
                         if (t.children && Array.isArray(t.children)) { node.children = t.children.map(hydrator); } return node;
                     });
                     tasks = tasks.concat(importedTasks);
@@ -335,8 +447,8 @@ jQuery(async () => {
         $(document).on('keydown', (event) => { if (event.key === 'Escape') { hidePanel(); } });
 
         $('#generate_tasks_button').on('click', handleGenerateTasksClick);
-        $('#add_task_button').on('click', () => addNewNode('新故事节点'));
-        $('#add_choice_button').on('click', () => addNewNode('新选择节点', null, 'choice'));
+        $('#add_task_button').on('click', () => addNewNode('新故事节点', 'task'));
+        $('#add_choice_button').on('click', () => addNewNode('新选择节点', 'choice'));
         $('#export_tasks_button').on('click', handleExportTasks);
         $('#import_tasks_button').on('click', handleImportTasks);
 
@@ -348,7 +460,7 @@ jQuery(async () => {
         
         setupMutationObserver();
         loadState();
-        console.log('[任务管理器] V14.1.0 (Intuitive Controls) 已成功初始化。');
+        console.log('[任务管理器] V16.2.0 (Choice Auto-Completion Fix) 已成功初始化。');
     } catch (error) {
         console.error('[任务管理器] 插件初始化失败:', error);
     }
