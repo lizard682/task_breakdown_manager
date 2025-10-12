@@ -11,6 +11,9 @@
     display: none;
 }
 .task-manager-panel {
+    /* DEFENSIVE FIX: Ensure the entire panel is horizontal */
+    writing-mode: horizontal-tb !important;
+
     position: fixed;
     top: 50%;
     left: 50%;
@@ -111,7 +114,6 @@
     flex-direction: column;
     gap: 0;
 }
-/* Center the initial placeholder text */
 #task_list_container > p {
     text-align: center;
     padding: 10px 0;
@@ -183,6 +185,9 @@
     color: var(--text-color-secondary);
 }
 .task-item .task-description {
+    /* DEFENSIVE FIX: Ensure textareas are always horizontal */
+    writing-mode: horizontal-tb !important;
+
     flex-grow: 1;
     width: 100%;
     padding: 6px;
@@ -263,11 +268,9 @@
         padding-left: 15px;
         margin-left: 10px;
     }
-    
-    /* NEW: Mobile layout fixes for section headers and buttons */
     .section-header {
         flex-direction: column;
-        align-items: stretch; /* Make items take full width */
+        align-items: stretch;
         gap: 10px;
     }
     .task-actions-group {
@@ -275,12 +278,10 @@
         justify-content: space-between;
     }
     .task-actions-group > .menu_button {
-        flex-grow: 1; /* Make buttons share space equally */
+        flex-grow: 1;
         text-align: center;
-        padding: 10px 0 !important; /* Increase tap area */
+        padding: 10px 0 !important;
     }
-
-    /* Make AI generation button full-width on mobile */
     #generate_tasks_button {
         width: 100% !important;
         padding: 10px 0 !important;
